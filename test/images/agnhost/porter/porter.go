@@ -1,4 +1,4 @@
-/*
+	/*
 Copyright 2015 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -26,6 +26,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -35,6 +36,7 @@ import (
 )
 
 const tcpPrefix = "SERVE_PORT_"
+const udpPrefix = "SERVE_UDP_PORT_"
 const sctpPrefix = "SERVE_SCTP_PORT_"
 const tlsPrefix = "SERVE_TLS_PORT_"
 
@@ -81,6 +83,9 @@ func main(cmd *cobra.Command, args []string) {
 		case strings.HasPrefix(key, tcpPrefix):
 			port := strings.TrimPrefix(key, tcpPrefix)
 			go servePort(port, value)
+		case strings.HasPrefix(key, udpPrefix):
+			port := strings.TrimPrefix(key, udpPrefix)
+			go serveUDPPort(port, value)
 		case strings.HasPrefix(key, sctpPrefix):
 			port := strings.TrimPrefix(key, sctpPrefix)
 			go serveSCTPPort(port, value)
@@ -114,6 +119,43 @@ func servePort(port, value string) {
 		}),
 	}
 	log.Printf("server on port %q failed: %v", port, s.ListenAndServe())
+}
+
+func serveUDPPort(port, value string) {
+	// 1. Resolve Address
+	addr, err := net.ResolveUDPAddr("udp", "0.0.0.0:"+port)
+	if err != nil {
+		log.Fatalf("UDP: failed to resolve address: %v", err)
+	}
+
+	// 2. Listen (returns *net.UDPConn)
+	sock, err := net.ListenUDP("udp", addr)
+	if err != nil {
+		log.Fatalf("UDP: failed to listen on port %s: %v", port, err)
+	}
+	defer sock.Close()
+
+	log.Printf("Started UDP server on port %s", port)
+
+	// 3. Buffer (1024 is safer, but 16 works if you only want to trigger the read)
+	buf := make([]byte, 16)
+
+	for {
+		// Uses generic ReadFrom (returns net.Addr interface)
+		_, cliAddr, err := sock.ReadFrom(buf)
+		if err != nil {
+			// CRITICAL: Use Printf, NOT Fatalf. 
+			// We don't want to crash the whole porter process just because one packet failed.
+			log.Printf("Error reading UDP packet: %v", err)
+			continue 
+		}
+
+		// Uses generic WriteTo (takes net.Addr interface)
+		_, err = sock.WriteTo([]byte(value), cliAddr)
+		if err != nil {
+			log.Printf("Error sending UDP response: %v", err)
+		}
+	}
 }
 
 func serveTLSPort(port, value string) {
