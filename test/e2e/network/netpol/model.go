@@ -165,7 +165,7 @@ func (p *Pod) ContainerSpecs() []v1.Container {
 				Value: "foo",
 			})
 			ports = append(ports, v1.ContainerPort{
-				Name:          fmt.Sprintf("%s-%d", strings.ToLower(string(protocol)), port),
+				Name:          fmt.Sprintf("serve-%d-%s", port, strings.ToLower(string(protocol))),
 				Protocol:      protocol,
 				ContainerPort: port,
 			})
